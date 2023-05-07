@@ -13,7 +13,7 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 import os
-s
+
 def generator(inputs,image_size,activation='sigmoid',labels=None,codes=None):
     '''建立一個生成器模型
     BN-ReLU-Conv2DTranspose 堆疊去產生假圖片
@@ -255,3 +255,66 @@ def train(models,data,params):
     # number of elements in train dataset 
     train_size = x_train.shape[0]
     # 2023.5.6
+    print(model_name,'Labels for generated images:' ,np.argmax(noise_label,axis=1))
+    for i in range(train_steps):
+        # train the discriminator for 1 batch 
+        # 1 batch of read(label=1.0) and fake images(label=0.0)
+        # randomly pick real images and corresponding lables from dataset 
+        rand_indexes = np.random.randint(0,train_size,size=batch_size)
+        real_images = x_train[rand_indexes]
+        real_labels = y_train[rand_indexes]
+        # random codes for real images 
+        real_code1 = np.random.normal(scale=0.5,size=[batch_size,1])
+        real_code2 = np.random.normal(scale=0.5,size=[batch_size,1])
+        # generate fake images ,labels and codes
+        noise = np.random.uniform(-1.0,1.0,size=[batch_size,latent_size])
+
+        fake_labels = np.eye(num_labels)[np.random.choice(num_labels,batch_size)]
+        fake_code1 = np.random.normal(scal3=0.5,size=[batch_size,1])
+        fake_code2 = np.random.normal(scale=0.5,size=[batch_size,1])
+        inputs = (noise,fake_labels,fake_code1,fake_code2)
+        fake_images = generator.predict(inputs)
+        # real + fake images = 1 batch of train data 
+        x = np.concatenate((real_images,fake_images))
+        labels = np.concatenate((real_images,fake_labels))
+        code1 = np.concantenate((real_code1,fake_code1))
+        code2 = np.concantenate((real_code2,fake_code2))
+
+        # label real and fake images 
+        # real images labels is 1.0 
+        y = np.ones([2*batch_size,1])
+        # fake images label is 0.0 
+        y[batch_size:,:] = 0 
+        # trian discriminator network 
+        # log the loss and label accuracy 
+        outputs = [y,labels,code1,code2]
+        # metrics = ['loss','activation_1_loss','label_loss']  .... 
+        metrics = discriminator.train_on_batch(x,outputs)
+        fmt = "%d: [discriminator loss: %f, label_acc: %f]"
+        log = fmt % (i, metrics[0], metrics[6])
+
+        # train the adversarial network for 1 batch 
+        # 1 batch of fake images with label=1.0 
+
+        noise = np.random.uniform(-1.0,1.0,size=[batch_size,latent_size])
+        fake_labels = np.eye(num_labels)[np.random.choice(num_labels,batch_size)]
+        fake_code1 = np.random.normal(scale=0.5,size=[batch_size,1])
+        fake_code2 = np.random.normal(scale=0.5,size=[batch_size,1])
+        y = np.ones([batch_size,1])
+
+        inputs = [noise,fake_labels,fake_code1,fake_code2]
+        outputs = [y,fake_labels,fake_code1,fake_code2]
+        metrics = adversarial.train_on_batch(inputs,outputs)
+        fmt = "%s [adversarial loss: %f, label_acc: %f]"
+        log = fmt % (log, metrics[0], metrics[6])
+        print(log )
+        if (i + 1) % save_interval == 0:
+            plot_images(generator,noise_input=noise_input,
+                        noise_label=noise_label,
+                        noise_codes = [noise_code1,noise_code2],
+                        show=False,
+                        step=(i+1),
+                        model_name=model_name
+        )
+    
+    generator.save(model_name+'.h5')
