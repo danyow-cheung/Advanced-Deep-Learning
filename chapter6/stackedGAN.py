@@ -151,13 +151,105 @@ def build_and_train_models():
     inputs = Input(shape=input_shape,name='discriminator0_input')
     dis0 = gan.discriminator(inputs,num_codes=z_dim)
 
-    optimizers = RMSprop(lr=lr,decay=decay)
+    optimizer = RMSprop(lr=lr,decay=decay)
     loss = ['binary_crossentropy', 'mse']
     loss_weights = [1.0,10.0]
     dis0.compilie(loss=loss,loss_weights=loss_weights,
-                  optimizers=optimizers,
+                  optimizers=optimizer,
                   metrics=['accuracy'])
     
     dis0.summary()
 
-    # 
+    # build discriminator 1 and 1 network 1 models
+    input_shape = (feature1_dim, )
+    inputs = Input(shape=input_shape, name='discriminator1_input')
+    dis1 = build_Discriminator(inputs, z_dim=z_dim )
+    # loss fuctions: 1) probability feature1 is real
+    # (adversarial1 loss)
+    # 2) MSE z1 recon loss (Q1 network loss or entropy1 loss)
+    loss = ['binary_crossentropy', 'mse']
+    loss_weights = [1.0, 1.0]
+    dis1.compile(loss=loss,
+                loss_weights=loss_weights,
+                optimizer=optimizer,
+                metrics=['accuracy'])
+    dis1.summary() # feature1 discriminator, z1 estimator
+
+    # build generator models 
+    feature1 = Input(shape=feature1_shape,name='feature1_input')
+    labels = Input(shape=label_shape,name='labels')
+    z1 = Input(shape=z_shape,name='z1_input')
+    z0 = Input(shape=z_shape,name='z0_input')
+    gen0,gen1 = build_generator(latent_codes,image_size)
+    gen0.summary()
+    gen1.summary()
+
+    # build encoder models 
+    input_shape = (image_size,image_size,1)
+    inputs = Input(shape=input_shape,name='encoder_input')
+    enc0,enc1 = build_encoder((inputs,feature1),num_labels)
+    enc0.summary()
+    enc1.summary()
+
+    encoder = Model(inputs,enc1(enc0(inputs)))
+    encoder.summary()
+
+    data = (x_train,y_train),(x_test,y_test)
+    train_encoder(encoder,data,model_name=model_name)
+    # build adversarial model 
+    optimizer = RMSprop(lr=lr*0.5,decay=decay*.5)
+    # 冻结encoder 0 
+    enc0.trainable = False 
+    # discriminator0 weights frozen 
+    dis0.trainable = False 
+    gen0_inputs = [feature1,z0]
+    gen0_outputs = gen0(gen0_inputs)
+    adv0_outputs = dis0(gen0_outputs) + [enc0(gen0_outputs)]
+    adv0 = Model(gen0_inputs,adv0_outputs,name='adv0')
+    loss = ['binary_croessentropy','mse','mse']
+    adv0.compile(loss=loss,loss_weights=loss_weights,optimizer=optimizer,metrics=['accuracy'])
+    adv0.summary()
+
+    # build adversariall model 
+    enc1.trainable = False 
+    dis1.trainable = False 
+    gen1_inputs = [labels,z1]
+    gen1_outputs = gen1(gen1_inputs)
+    adv1_outputs = dis1(gen1_outputs)+[enc1(gen1_outputs)]
+    adv1 = Model(gen1_inputs,adv1_outputs,name='adv1')
+    loss_weights = [1.0,1.0,1.0]
+    loss = ['binary_crossentropy','mse','categorical_crossentropy']
+    adv1.compile(loss=loss,loss_weights=loss_weights,optimizer=optimizer,metrics=['accuracy'])
+    adv1.summary()
+    models = (enc0,enc1,gen0,gen1,dis0,dis1,adv0,adv1)
+    params = (batch_size,train_steps,num_labels,z_dim,model_name)
+    train(models,data,params)
+
+def train(models,data,params):
+    '''
+    Train the discriminator and adversarial networks
+    Discriminator is trained first with real and fake images 
+    corresponding one-hot labels and latent_codes 
+    Adversarial is trained next with fake images pretending 
+    to be real ,corresponding one-hot labels and latent codes
+    Generate sample images per save_interval 
+   
+    # Arguments:
+        models(Models):     Encoder,Generator,Discriminator,Adversarial models 
+        data(tuple):        x_train,y_train data 
+        params(tuple):      Network parameters  
+    '''
+    enc0 ,enc1 ,gen0,gen1 ,dis0,dis1 ,adv0,adv1 = models 
+    # 网络参数
+    batch_size,train_steps ,num_labels ,z_dim ,model_name = params 
+
+    (x_train,x_test),(_,_) = data 
+    # the geneertor image is saved every 500 steps 
+    save_interval = 500 
+    
+    z0 = np.random.normal(scale=0.5,size=(16,z_dim))
+    z1 = np.random.normal(scale=0.5,size=(16,z_dim))
+    noise_class = np.eye(num_labels)[np.arange(0,16) % num_labels]
+    noise_params = [noise_class,z0,z1]
+    train_size = x_train.shape[0]
+    
