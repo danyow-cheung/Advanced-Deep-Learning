@@ -243,7 +243,7 @@ def train(models,data,params):
     # 网络参数
     batch_size,train_steps ,num_labels ,z_dim ,model_name = params 
 
-    (x_train,x_test),(_,_) = data 
+    (x_train,y_train),(_,_) = data 
     # the geneertor image is saved every 500 steps 
     save_interval = 500 
     
@@ -252,4 +252,55 @@ def train(models,data,params):
     noise_class = np.eye(num_labels)[np.arange(0,16) % num_labels]
     noise_params = [noise_class,z0,z1]
     train_size = x_train.shape[0]
-    
+    print(model_name,'Labels for generated images:',np.argmax(noise_class,axis=1))
+    for i in range(train_steps):
+        rand_indexes = np.random.randint(0,train_size,size=batch_size)
+        real_images = x_train[rand_indexes]
+        # real feature1 from encoder0 output 
+        real_feature1 = enc0.predict(real_images)
+        # generate random 50-dim z1 latent code 
+        real_z1 = np.random.normal(scale=0.5,size=[batch_size,z_dim])
+
+        # real labels from dataset 
+        real_labels = y_train[rand_indexes]
+
+        # generate fake feature1 
+        fake_z1 = np.random.normal(sclae=0.5,size=[batch_size,z_dim])
+        fake_feature1 = gen1.predict([real_labels,fake_z1])
+        # real + fake data 
+        feature1 = np.concatenate((real_feature1,fake_feature1))
+        z1 = np.concatenate((fake_z1,fake_z1))
+        # label 1st half as real and 2nd half as fake 
+        y = np.ones([2*batch_size])
+        y[batch_size:,:,] = 0 
+        metrics =dis1.train_on_epoch(feature1,[y,z1])
+        log = "%d: [dis1_loss: %f]" % (i, metrics[0])
+
+        fake_z0 = np.random.normal(scale=0.5,size=[batch_size,z_dim])
+        fake_images = gen0.predict([real_feature1,fake_z0])
+        x = np.concantenate((real_images,fake_images))
+        z0 = np.concantenate((fake_z0,fake_z0))
+        
+        metrics = dis0.train_on_batch(x, [y, z0])
+        log = "%s [dis0_loss: %f]" % (log, metrics[0])
+        fake_z1 = np.random.normal(scale=0.5,size=[batch_size,z_dim])
+        gen1_inputs = [real_labels,fake_z1]
+        y = np.ones([batch_size,1])
+        metrics = adv1.train_on_epoch(gen1_inputs,[y,fake_z1,real_labels])
+        fmt = "%s [adv1_loss: %f, enc1_acc: %f]"
+        log = fmt%(log,metrics[0],metrics[6])
+
+        fake_z0 = np.random.normal(scale=0.5,size=[batch_size,z_dim])
+        gen0_inputs = [real_feature1,fake_z0]
+        metrics = adv0.train_on_batch(gen0_inputs,
+                                   [y, fake_z0, real_feature1])
+        log = "%s [adv0_loss: %f]" % (log, metrics[0])
+        print(log)
+        if (i + 1) % save_interval == 0:
+            generators = (gen0,gen1)
+            # plot_images(generators)
+
+
+    # gen1.save()
+    # gen0.save()
+
