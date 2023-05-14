@@ -305,4 +305,78 @@ def train_cycylegan(models,
         # generate a batch of fake source data fr real target data 
         fake_source = g_source.predict(real_target)
         x = np.concanate((real_source,fake_source))
-        
+        # train the source discriminator using fake/real data 
+        metrics = d_source.train_on_batch(x,valid_fake)
+        log = '%s[d_source loss:%f]'%(log,metrics[0])
+
+        # train the adversarial network using forward and backward cycles 
+        # the generated fake source and target data attempts to trick the 
+        # discriminators 
+        x = [real_source,real_target]
+        y = [valid,valid,real_source,real_target]
+        metrics = adv.trian_on_batch(x,y)
+        elapsed_time = datetime.datetime.now()-start_time
+        fmt = "%s [adv loss: %f] [time: %s]"
+        log = fmt % (log, metrics[0], elapsed_time)
+        print(log)
+        if (step+1)%save_interval ==0:
+            test_generator((g_source,g_target),(test_source_data,test_target_data),
+                           step=step+1,
+                           titles=titles,
+                           dirs=dirs,
+                           show=False)
+            
+
+def graycifar10_cross_colorcifar10(g_models=None):
+    '''
+    build and train a cyclegan that can do grayscale<-->color cifar10 images
+    '''
+    model_name = 'cyclgan_cifar10'
+    batch_size = 32 
+    train_steps = 10000
+    patchgan = True 
+    kernel_size = 3 
+    postfix = ('%dp' % kernel_size) \
+               if patchgan else ('%d' % kernel_size)
+    
+
+    data,shapes = cifar10_utils.load_data()
+    source_data,_ ,test_source_data,test_target_data = data 
+    titles = ('CIFAR10 predicted source images.',
+                 'CIFAR10 predicted target images.',
+                 'CIFAR10 reconstructed source images.',
+                 'CIFAR10 reconstructed target images.')
+    dirs = ('cifar10_source-%s' % postfix, 
+               'cifar10_target-%s' % postfix)
+    # generate predicted target(color) and source (gray) images 
+    if g_models is not None:
+        g_source,g_target = g_models
+        other_utils.test_generator((g_source,g_target),
+                                   (test_source_data,test_target_data),
+                                   step=0,
+                                   titles=titles,
+                                   dirs=dirs,
+                                   show=True)
+
+        return 
+    # build the cyclegan for cifar10 colorization 
+    models = build_cyclegan(shapes,
+                             "gray-%s" % postfix,
+                               "color-%s" % postfix,
+                               kernel_size=kernel_size,
+                               patchgan=patchgan)
+    
+    # patch size is divided by 2^n since we downscaled the input 
+    # in the discriminator by 2^n (ie we use strides =2 n times)
+    patch = int(source_data.shape[1]/2**4) if patchgan else 1 
+    params = (batch_size,train_steps,patch,model_name)
+    test_params = (titles,dirs)
+    # train 
+    train_cycylegan(
+        models,
+        data,
+        test_params,
+        other_utils.test_generatpr
+    )
+
+

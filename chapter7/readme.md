@@ -17,3 +17,5 @@ In the context of Figure 7.1.2, we just need thousands of photos of real sunflow
 The cycle consistency check implies that although we have transformed source data x to domain y, the original features of x should remain intact in y and be recoverable. The network F is just another generator that we will borrow from the backward cycle GAN, as discussed next.
 循环一致性检查意味着，尽管我们已经将源数据x转化为域y，但x的原始特征应该在y中保持完整，并且可以恢复。网络F只是另一个生成器，我们将从后向循环GAN中借用，接下来将讨论。
 ### Implementing
+1. cycleGAN.py 
+2. cycleGAN on MNIST and SVHN.py
