@@ -41,3 +41,38 @@ x = Dense(16,activation='relu')(x)
 
 z_mean = Dense(latent_dim,name='z_mean')(x)
 # 20230515
+z_log_var = Dense(latent_dim,name='z_log_var')(x)
+
+# use reparameter trick to push the sampling out as input 
+z = Lambda (sampling,output_shape=(latent_dim,),name='z')([z_mean,z_log_var])
+
+encoder = Model(inputs,[z_mean,z_log_var,z],name='encoder')
+# build the decoder model 
+latent_inputs = Input(shape=(latent_dim,),name='z_samping')
+x = Dense(shape[1]*shape[2]*shape[3],activation='relu',)(latent_inputs)
+x = Reshape(shape[1],shape[2],shape[3])(x)
+
+for i in range(2):
+    x = Conv2DTranspose(
+        filters=filter,
+        kernel_size=kernel_size,
+        activation='relu',
+        strides = 2,
+        padding='same'
+    )(x)
+
+    filters //= 2 
+
+outputs = Conv2DTranspose(
+    filters=1,
+    kernel_size=kernel_size,
+    activation='sigmoid',
+    padding='same',
+    name='decoder_output'
+)(x)
+
+# instantiate decoder model 
+decoder = Model(latent_inputs,outputs,name='decoder')
+# instantiate VAE model 
+outputs = decoder (encoder(inputs)[2])
+vae = Model(inputs,outputs,name='vae')
