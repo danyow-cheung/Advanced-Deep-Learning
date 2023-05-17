@@ -37,6 +37,26 @@ $$
 
 ## Q-learning example 
 ## Nondeterministic enviroment
+非確定性環境
+deterministic environments. In the next section, we will present a more generalized Q-learning algorithm called Temporal- Difference (TD) learning.
+確定性環境。 在下一節中，我們將介紹一種更通用的 Q 學習算法，稱為時間差分 (TD) 學習。
+
 ## Temporal-difference learning 
+時間差分 (TD) 學習。
+> q_learning_gym.py
+> 
 ## Deep Q-Network
+使用 Q-table 實現 Q-learning 在小型離散環境中很好。 然而，當環境有許多狀態或連續時，在大多數情況下，Q 表不可行或不實用。 例如，如果我們正在觀察由四個連續變量組成的狀態，則表的大小是無限大的。 即使我們試圖將四個變量分別離散化為 1,000 個值，表中的總行數也是驚人的 10004 = 1e12。 即使在訓練之後，該表也是稀疏的——該表中的大部分單元格都是零。
+這個問題的解決方案稱為 DQN [2]，它使用深度神經網絡來逼近 Q 表，如圖 9.6.1 所示。 有兩種構建 Q 網絡的方法：
+- 輸入是狀態-動作對，預測是Q值
+- 輸入是狀態，預測是每個動作的Q值
+第一個選項不是最優的，因為網絡將被調用的次數等於操作的次數。 第二種是首選方法。 Q 網絡只被調用一次。
+
+然而，事實證明訓練 Q 網絡是不穩定的。 造成不穩定的問題有兩個：
+1）樣本間相關性高； 
+2) 非靜止目標。
+高度相關是由於抽樣經驗的連續性。 DQN 通過創建**經驗緩衝區**解決了這個問題。 訓練數據是從這個緩衝區中隨機抽取的。 此過程稱為體驗重播。
+
+### DQN on Keras 
+
 ## Conclusion
