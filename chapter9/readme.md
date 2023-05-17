@@ -58,5 +58,7 @@ deterministic environments. In the next section, we will present a more generali
 高度相關是由於抽樣經驗的連續性。 DQN 通過創建**經驗緩衝區**解決了這個問題。 訓練數據是從這個緩衝區中隨機抽取的。 此過程稱為體驗重播。
 
 ### DQN on Keras 
+> dqn_carpole.py
+#### double Q-learning(DDQN)
 
 ## Conclusion
