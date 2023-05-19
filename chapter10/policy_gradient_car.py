@@ -115,10 +115,95 @@ class PolicyAgent:
         action = K.clip(action,self.env.action_space.low[0],self.env.action_space.high[0])
         return action
     
+    def build_actor_critic(self):
+        '''
+        4 models are built but 3 models share the same parameters,hence training one,
+        training the rest,the 3 models that share the same parameters are action,logp and entropy models 
+        Entropy model is used by a2c only 
+        Each model has the same MLP structure : Inpput(2)-Encoder-Output(1)
+        
+        The output activation depends on the nature of the output
+        '''
+        inputs = Input(shape=(self.state_dim,)name='state')
+        self.encoder.trainable = False 
+        x = self.encoder(inputs)
+        mean = Dense(1,activation='linear',kernel_initializer='zero',name='mean')(x)
+
+        stddev = Dense(1,kernel_initializer='zero',name='stddev')(x)
+
+        # use of softplusk avoids stddev = 0 
+        stddev = Activation('softplusk',name='softplus')(stddev)
+        action = Lambda(self.action,output_shape=(1,),
+                        name='action')([mean,stddev])
+        
+        self.actor_model = Model(inputs,action,name='action')
+        self.actor_model.summary()
+        logp = Lambda(self.logp,output_shape=(1,),name='logp')([mean,stddev,action])
+
+        self.logp_model = Model(inputs,logp,name='logp')
+        self.logp_model.summary()
+        entropy = Lambda(self.entropy,output_shape=(1,),name='entropy')([mean,stddev])
+
+        self.entropy_model = Model(inputs,entropy,name='entropy')
+        self.entropy_model.summary()
+
+        value = Dense(1,activation='linear',kernel_initializer='zero',name='value')(x)
+
+        self.value_model = Model(inputs,value,name='value')
+        self.value_model.summary()
+
+        # logp loss of policy network 
+        loss = self.logp_loss(self.get_entropy(self.state),beta=self.beta)
+        optimizer = RMSprop(lr=1e-3)
+        self.logp_model.compilie(loss=loss,optimizer=optimizer)
+        optimizer = Adam(lr=1e-3)
+        self.value_model.compile(loss=self.loss,optimizer=optimizer)
 
 
+    def logp(self,args):
+        '''
+        Given mean,stddev,and action compute the log probability of the Gaussian distribution
+        Arguments:
+            args(list)      mean,stddev,action,list
+        '''
+        mean,stddev ,action = args 
+        dist = tfp.distributions.Normal(loc=mean,scale=stddev)
+        logp = dist.log_prob(action)
+        return logp 
+    
+    def entropy(self,args):
+        '''
+        Given the mean and stddev compute the Gaussian dist entropy
+        Arguments:
+            args(list)      mean,stddev,list
+        '''
+        mean,stddev = args 
+        dist = tfp.distribution.Normal(loc=mean,scale=stddev)
+        entropy = dist.entropy()
+        return entropy
+    
+    def logp_loss(self,entropy,beta=0.0):
+        '''
+        logp loss,the 3rd and 4th variables (entropy and beta) are needed by A2C 
+        so we have a different loss function structure 
+        Argument:
+            entropy(tensor):    Entropy loss 
+            beta(float)         Entropy loss weight 
+        '''
 
-
+        def loss(y_true,y_pred):
+            return -K.mean((y_pred*y_true) + (beta*entropy),axis=-1) 
+        return loss 
+    def value_loss(self,y_true,y_pred):
+        '''
+        Typical loss function structure that accepts 2 arguments only
+        this will be used by value loss of all methods expect a2c 
+        Arguments:
+            y_true(tensor)  value ground truth 
+            y_pred(tensor)  value prediction
+        '''
+        return -K.mean(y_pred*y_true,axis=-1)
+    
 
 class REINFORCEAgent(PolicyAgent):
     def __init__(self,env):
@@ -310,3 +395,70 @@ class A2CAgent(PolicyAgent):
         discount_delta = np.reshape(discount_delta,[-1,1])
 
         self.value_model.fit(np.array(state),discount_delta,batch_size=1,epochs=1,verbose=verbose)
+
+
+if __name__ =='__main__':
+    args = setup_parser()
+    logger.setLevel(logger.ERROR)
+
+    weights, misc = setup_files(args)
+    actor_weights, encoder_weights, value_weights = weights
+    postfix, fileid, outdir, has_value_model = misc
+
+    env = gym.make(args.env_id)
+    env = wrappers.Monitor(env, directory=outdir, force=True)
+    env.seed(0)
+    
+    # register softplusk activation. just in case the reader wants
+    # to use this activation
+    get_custom_objects().update({'softplusk':Activation(softplusk)})
+   
+    agent, train = setup_agent(env, args)
+
+    if args.train or train:
+        train = True
+        csvfile, writer = setup_writer(fileid, postfix)
+
+    # number of episodes we run the training
+    episode_count = 1000
+    
+    # sampling and filtting 
+    for episode in range(episode_count):
+        state = env.reset()
+        # state is car[postion,speed]
+        state = np.reshape(state,[1,state_dim])
+        # reset all variables and memory before the start of every episode
+        step = 0 
+        total_reward = 0 
+        done = False 
+        agent.reset_memory()
+        while not done:
+            # [min,max] action = [-1.0,1.0]
+            if args.random:
+                action = env.action_space.sample()
+            else:
+                action = agent.act(state)
+            
+            env.render()
+            # after executing the action.get s',r,done 
+            next_state,reward,done,_ = env.step(action)
+            next_state = np.reshape(next_state,[1,state_dim])
+
+            # save the experience unit in memory for training 
+            item = [step,state,next_state,reward,done]
+            agent.remenber(item)
+            if args.actor_critic and train:
+                agent.train(item,gamma=0.99)
+            elif not args.random and done and train:
+                # for  reinforece 
+                if args.a2c:
+                    v = 0 if reward>0 else agent.value(next_state)
+                    agent.train_by_episode(last_value=v)
+                else:
+                    agent.train_by_episode()
+            
+            total_reward += reward 
+            state = next_state
+            step += 1 
+            
+                
