@@ -98,4 +98,57 @@ class IIC:
 
         # each head contribute 1/n_heads to the total loss 
         return neg_mi/self.args.heads 
+        
+    def train(self):
+        '''Train function uses the data generator,
+        accuracy computation and learning rate 
+        scheduler callbacks
+        '''
+        accuracy = AccuracyCallback(self)
+        lr_schedule = LearningRateScheduler(lr_schedule,verbose=1)
+        callbacks =[accuracy,lr_schedule]
+        self._model.fit_generator(
+            generator=self.train_gen,
+            use_multiprocessing=True,
+            epochs=self.args.epochs,
+            callbacks=callbacks,
+            workers=4,
+            shuffle=True
+        )
+    
+    def eval(self):
+        '''
+        Evlaute the accuracy of the current model weights
+        '''
+        y_pred = self._model.predict(self.x_test)
+        print('')
+        # accuracy per head 
+        for head in range(self.args.heads):
+            if self.args.heads ==1:
+                y_pred = y_pred
+            else:
+                y_head = y_pred[head]
+            y_head = np.argmax(y_head,axis=1)
+            accuracy = unsupervised_labels(
+                list(self.y_test),
+                list(y_head),
+                self.n_labels,
+                self.n_labels,
+            )
+            info = "Head %d accuracy: %0.2f%%"
+            if self.accuracy>0:
+                info += ", Old best accuracy: %0.2f%%"
+                data = (head, accuracy, self.accuracy)
+            else:
+                data = (head,accuracy)
+            print(info % data)
+
+            if accuracy>self.accuracy and self.args.save_weights is not None:
+                self.accuracy = accuracy 
+                folder = self.args.save_dir 
+                os.makedirs(folder,exist_ok=True)
+                path = os.path.join(folder, self.args.save_weights)
+                print('Saving weights',path)
+                self._model.save_weights(path)
+
             
