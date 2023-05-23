@@ -8,3 +8,4 @@ Advanced Deep Learning with TensorFlow 2 and Keras Apply DL, GANs, VAEs, deep RL
 chapter 11 :https://github.com/danyow-cheung/Object-Detection
 chapter 12: https://github.com/danyow-cheung/Semantic_Segmentation
 
+## 0523-done 
